@@ -52,7 +52,7 @@ main :: proc() {
 		stdin_stream := os.stream_from_handle(os.stdin)
 		for {
 			fmt.print("my_debugger> ")
-			line, read_err := read_line(stdin_stream)
+			line, read_err := read_input(stdin_stream)
 			defer if read_err == nil {
 				delete(line)
 			}
@@ -70,15 +70,15 @@ handle_command :: proc(command: string) {
 	// TODO
 }
 
-read_line :: proc(s: io.Stream) -> (string, io.Error) {
+read_input :: proc(s: io.Stream) -> (string, io.Error) {
 	builder := strings.builder_make()
 	for {
 		b, read_err := io.read_byte(s)
 		if read_err != nil {
+			if read_err == .EOF {
+				return strings.to_string(builder), nil
+			}
 			return "", read_err
-		}
-		if b == '\n' {
-			return strings.to_string(builder), nil
 		}
 		strings.write_byte(&builder, b)
 	}
