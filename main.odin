@@ -47,12 +47,12 @@ main :: proc() {
 		dbg := Debugger{program, pid}
 
 		wait_status: u32
-		pid, err_no = sys.waitpid(pid, &wait_status, {}, nil)
+		pid, err_no = sys.waitpid(pid, &wait_status, nil, nil)
 
 		stdin_stream := os.stream_from_handle(os.stdin)
 		for {
 			fmt.print("my_debugger> ")
-			line, read_err := read_input(stdin_stream)
+			line, read_err := read_line(stdin_stream)
 			defer if read_err == nil {
 				delete(line)
 			}
@@ -60,25 +60,41 @@ main :: proc() {
 				fmt.eprintln("Error when reading stdin:", read_err)
 				continue
 			}
-			fmt.println(line)
-			handle_command(line)
+			handle_command(&dbg, line)
 		}
 	}
 }
 
-handle_command :: proc(command: string) {
-	// TODO
+handle_command :: proc(dbg: ^Debugger, line: string) {
+	args := strings.split(line, " ")
+	if len(args) == 0 {
+		return
+	}
+	command := args[0]
+
+	if strings.compare(command, "continue") == 0 {
+		continue_execution(dbg)
+	} else {
+		fmt.println("Unknown command")
+	}
 }
 
-read_input :: proc(s: io.Stream) -> (string, io.Error) {
+continue_execution :: proc(dbg: ^Debugger) {
+	sys.ptrace_cont(.CONT, dbg.pid, nil)
+
+	wait_status: u32
+	sys.waitpid(dbg.pid, &wait_status, nil, nil)
+}
+
+read_line :: proc(s: io.Stream) -> (string, io.Error) {
 	builder := strings.builder_make()
 	for {
 		b, read_err := io.read_byte(s)
 		if read_err != nil {
-			if read_err == .EOF {
-				return strings.to_string(builder), nil
-			}
 			return "", read_err
+		}
+		if b == '\n' {
+			return strings.to_string(builder), nil
 		}
 		strings.write_byte(&builder, b)
 	}
