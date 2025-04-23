@@ -99,3 +99,28 @@ read_line :: proc(s: io.Stream) -> (string, io.Error) {
 		strings.write_byte(&builder, b)
 	}
 }
+
+Breakpoint :: struct {
+	pid:        sys.Pid,
+	addr:       uintptr,
+	enabled:    bool,
+	saved_data: u8,
+}
+
+breakpoint_enable :: proc(bp: ^Breakpoint) {
+	data, peek_err := sys.ptrace_peek(.PEEKDATA, bp.pid, bp.addr)
+	bp.saved_data = cast(u8)(data & 0xff)
+	int3: uint = 0xcc
+	data_with_int3 := (data & ~cast(uint)0xff) | int3
+	sys.ptrace_poke(.POKEDATA, bp.pid, bp.addr, data_with_int3)
+
+	bp.enabled = true
+}
+
+breakpoint_disable :: proc(bp: ^Breakpoint) {
+	data, peek_err := sys.ptrace_peek(.PEEKDATA, bp.pid, bp.addr)
+	restored_data := (data & ~cast(uint)0xff) | cast(uint)bp.saved_data
+	poke_err := sys.ptrace_poke(.POKEDATA, bp.pid, bp.addr, restored_data)
+
+	bp.enabled = false
+}
