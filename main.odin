@@ -3,12 +3,28 @@ package main
 import "core:fmt"
 import "core:io"
 import "core:os"
+import "core:strconv"
 import "core:strings"
 import sys "core:sys/linux"
 
 Debugger :: struct {
-	program: string,
-	pid:     sys.Pid,
+	program:     string,
+	pid:         sys.Pid,
+	breakpoints: map[uintptr]Breakpoint,
+}
+
+debugger_init :: proc(dbg: ^Debugger) {
+	dbg.breakpoints = make(map[uintptr]Breakpoint)
+}
+
+debugger_set_breakpoint_at_address :: proc(dbg: ^Debugger, addr: uintptr) {
+	fmt.printfln("Set breakpoint address at 0x%X", addr)
+	bp := Breakpoint {
+		pid  = dbg.pid,
+		addr = addr,
+	}
+	breakpoint_enable(&bp)
+	dbg.breakpoints[addr] = bp
 }
 
 main :: proc() {
@@ -33,10 +49,8 @@ main :: proc() {
 		}
 
 		cprogram := strings.clone_to_cstring(program)
-		program_arr := [?]cstring{cprogram}
-		cprogram_multipointer: [^]cstring = raw_data(program_arr[:])
 
-		execl_err := sys.execve(cprogram, cprogram_multipointer, nil)
+		execl_err := sys.execve(cprogram, nil, nil)
 		if execl_err != nil {
 			fmt.eprintln("Execl error:", execl_err)
 			os.exit(1)
@@ -44,7 +58,11 @@ main :: proc() {
 		fmt.println("Success")
 	} else if pid >= 1 {
 		fmt.println("Started debugging process", pid)
-		dbg := Debugger{program, pid}
+		dbg := Debugger {
+			program = program,
+			pid     = pid,
+		}
+		debugger_init(&dbg)
 
 		wait_status: u32
 		pid, err_no = sys.waitpid(pid, &wait_status, nil, nil)
@@ -72,10 +90,25 @@ handle_command :: proc(dbg: ^Debugger, line: string) {
 	}
 	command := args[0]
 
-	if strings.compare(command, "continue") == 0 {
+	switch command {
+	case "continue":
 		continue_execution(dbg)
-	} else {
+	case "break":
+		if len(args) < 2 {
+			fmt.println("Not enough arguments")
+			return
+		}
+		potential_address := args[1]
+		potential_address = potential_address[2:]
+		address, ok := strconv.parse_uint(potential_address, 16)
+		if !ok {
+			fmt.println("Incorrect address")
+			return
+		}
+		debugger_set_breakpoint_at_address(dbg, cast(uintptr)address)
+	case:
 		fmt.println("Unknown command")
+		return
 	}
 }
 
