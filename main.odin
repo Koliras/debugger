@@ -196,6 +196,42 @@ handle_command :: proc(dbg: ^Debugger, line: string) {
 			return
 		}
 		debugger_set_breakpoint_at_address(dbg, cast(uintptr)address)
+	case "register":
+		if len(args) < 2 {
+			fmt.println("Not enough arguments")
+			return
+		}
+		switch args[1] {
+		case "dump":
+			debugger_dump_registers(dbg)
+		case "read":
+			if len(args) < 3 {
+				fmt.println("Not enough arguments")
+				return
+			}
+			reg, valid_register := STRING_TO_REGISTER[args[2]]
+			if !valid_register {
+				fmt.println("Invalid register name")
+				return
+			}
+			fmt.println(register_get_value(dbg.pid, reg))
+		case "write":
+			if len(args) < 4 {
+				fmt.println("Not enough arguments")
+				return
+			}
+			reg, valid_register := STRING_TO_REGISTER[args[2]]
+			if !valid_register {
+				fmt.println("Invalid register")
+				return
+			}
+			val, correct_val := strconv.parse_uint(args[2])
+			if !correct_val {
+				fmt.println("Incorrect value to set to register")
+				return
+			}
+			register_set_value(dbg.pid, reg, val)
+		}
 	case:
 		fmt.println("Unknown command")
 		return
@@ -278,6 +314,36 @@ Register_Type :: enum {
 	gs,
 }
 
+STRING_TO_REGISTER := map[string]Register_Type {
+	"r15"      = .r15,
+	"r14"      = .r14,
+	"r13"      = .r13,
+	"r12"      = .r12,
+	"rbp"      = .rbp,
+	"rbx"      = .rbx,
+	"r11"      = .r11,
+	"r10"      = .r10,
+	"r9"       = .r9,
+	"r8"       = .r8,
+	"rax"      = .rax,
+	"rcx"      = .rcx,
+	"rdx"      = .rdx,
+	"rsi"      = .rsi,
+	"rdi"      = .rdi,
+	"orig_rax" = .orig_rax,
+	"rip"      = .rip,
+	"cs"       = .cs,
+	"eflags"   = .eflags,
+	"rsp"      = .rsp,
+	"ss"       = .ss,
+	"fs_base"  = .fs_base,
+	"gs_base"  = .gs_base,
+	"ds"       = .ds,
+	"es"       = .es,
+	"fs"       = .fs,
+	"gs"       = .gs,
+}
+
 DWARF_TO_REGISTER := map[int]Register_Type {
 	15 = .r15,
 	14 = .r14,
@@ -311,124 +377,13 @@ DWARF_TO_REGISTER := map[int]Register_Type {
 register_get_value :: proc(pid: sys.Pid, r: Register_Type) -> uint {
 	regs: sys.User_Regs
 	ptrace_err := sys.ptrace_getregs(.GETREGS, pid, &regs)
-	switch r {
-	case .r15:
-		return regs.r15
-	case .r14:
-		return regs.r14
-	case .r13:
-		return regs.r13
-	case .r12:
-		return regs.r12
-	case .rbp:
-		return regs.rbp
-	case .rbx:
-		return regs.rbx
-	case .r11:
-		return regs.r11
-	case .r10:
-		return regs.r10
-	case .r9:
-		return regs.r9
-	case .r8:
-		return regs.r8
-	case .rax:
-		return regs.rax
-	case .rcx:
-		return regs.rcx
-	case .rdx:
-		return regs.rdx
-	case .rsi:
-		return regs.rsi
-	case .rdi:
-		return regs.rdi
-	case .orig_rax:
-		return regs.orig_rax
-	case .rip:
-		return regs.rip
-	case .cs:
-		return regs.cs
-	case .eflags:
-		return regs.eflags
-	case .rsp:
-		return regs.rsp
-	case .ss:
-		return regs.ss
-	case .fs_base:
-		return regs.fs_base
-	case .gs_base:
-		return regs.gs_base
-	case .ds:
-		return regs.ds
-	case .es:
-		return regs.es
-	case .fs:
-		return regs.fs
-	case .gs:
-		return regs.gs
-	}
-	return 0
+	return (transmute(^[27]uint)&regs)[r]
 }
 
 register_set_value :: proc(pid: sys.Pid, r: Register_Type, val: uint) {
 	regs: sys.User_Regs
 	ptrace_err := sys.ptrace_getregs(.GETREGS, pid, &regs)
-	switch r {
-	case .r15:
-		regs.r15 = val
-	case .r14:
-		regs.r14 = val
-	case .r13:
-		regs.r13 = val
-	case .r12:
-		regs.r12 = val
-	case .rbp:
-		regs.rbp = val
-	case .rbx:
-		regs.rbx = val
-	case .r11:
-		regs.r11 = val
-	case .r10:
-		regs.r10 = val
-	case .r9:
-		regs.r9 = val
-	case .r8:
-		regs.r8 = val
-	case .rax:
-		regs.rax = val
-	case .rcx:
-		regs.rcx = val
-	case .rdx:
-		regs.rdx = val
-	case .rsi:
-		regs.rsi = val
-	case .rdi:
-		regs.rdi = val
-	case .orig_rax:
-		regs.orig_rax = val
-	case .rip:
-		regs.rip = val
-	case .cs:
-		regs.cs = val
-	case .eflags:
-		regs.eflags = val
-	case .rsp:
-		regs.rsp = val
-	case .ss:
-		regs.ss = val
-	case .fs_base:
-		regs.fs_base = val
-	case .gs_base:
-		regs.gs_base = val
-	case .ds:
-		regs.ds = val
-	case .es:
-		regs.es = val
-	case .fs:
-		regs.fs = val
-	case .gs:
-		regs.gs = val
-	}
+	(transmute(^[27]uint)&regs)[r] = val
 
 	setreg_err := sys.ptrace_setregs(.SETREGS, pid, &regs)
 }
