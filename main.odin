@@ -1,3 +1,4 @@
+#+feature dynamic-literals
 package main
 
 import "core:fmt"
@@ -6,26 +7,6 @@ import "core:os"
 import "core:strconv"
 import "core:strings"
 import sys "core:sys/linux"
-
-Debugger :: struct {
-	program:     string,
-	pid:         sys.Pid,
-	breakpoints: map[uintptr]Breakpoint,
-}
-
-debugger_init :: proc(dbg: ^Debugger) {
-	dbg.breakpoints = make(map[uintptr]Breakpoint)
-}
-
-debugger_set_breakpoint_at_address :: proc(dbg: ^Debugger, addr: uintptr) {
-	fmt.printfln("Set breakpoint address at 0x%X", addr)
-	bp := Breakpoint {
-		pid  = dbg.pid,
-		addr = addr,
-	}
-	breakpoint_enable(&bp)
-	dbg.breakpoints[addr] = bp
-}
 
 main :: proc() {
 	if len(os.args) < 2 {
@@ -82,6 +63,28 @@ main :: proc() {
 		}
 	}
 }
+
+Debugger :: struct {
+	program:     string,
+	pid:         sys.Pid,
+	breakpoints: map[uintptr]Breakpoint,
+}
+
+debugger_init :: proc(dbg: ^Debugger) {
+	dbg.breakpoints = make(map[uintptr]Breakpoint)
+}
+
+debugger_set_breakpoint_at_address :: proc(dbg: ^Debugger, addr: uintptr) {
+	fmt.printfln("Set breakpoint address at 0x%X", addr)
+	bp := Breakpoint {
+		pid  = dbg.pid,
+		addr = addr,
+	}
+	breakpoint_enable(&bp)
+	dbg.breakpoints[addr] = bp
+}
+
+debugger_dump_registers :: proc(dbg: ^Debugger) {}
 
 handle_command :: proc(dbg: ^Debugger, line: string) {
 	args := strings.split(line, " ")
@@ -156,4 +159,194 @@ breakpoint_disable :: proc(bp: ^Breakpoint) {
 	poke_err := sys.ptrace_poke(.POKEDATA, bp.pid, bp.addr, restored_data)
 
 	bp.enabled = false
+}
+
+Register_Type :: enum {
+	r15,
+	r14,
+	r13,
+	r12,
+	rbp,
+	rbx,
+	r11,
+	r10,
+	r9,
+	r8,
+	rax,
+	rcx,
+	rdx,
+	rsi,
+	rdi,
+	orig_rax,
+	rip,
+	cs,
+	eflags,
+	rsp,
+	ss,
+	fs_base,
+	gs_base,
+	ds,
+	es,
+	fs,
+	gs,
+}
+
+DWARF_TO_REGISTER := map[int]Register_Type {
+	15 = .r15,
+	14 = .r14,
+	13 = .r13,
+	12 = .r12,
+	6  = .rbp,
+	3  = .rbx,
+	11 = .r11,
+	10 = .r10,
+	9  = .r9,
+	8  = .r8,
+	0  = .rax,
+	2  = .rcx,
+	1  = .rdx,
+	4  = .rsi,
+	5  = .rdi,
+	-1   = .orig_rax,
+	-1   = .rip,
+	51 = .cs,
+	49 = .eflags,
+	7  = .rsp,
+	52 = .ss,
+	58 = .fs_base,
+	59 = .gs_base,
+	53 = .ds,
+	50 = .es,
+	54 = .fs,
+	55 = .gs,
+}
+
+register_get_value :: proc(pid: sys.Pid, r: Register_Type) -> uint {
+	regs: sys.User_Regs
+	ptrace_err := sys.ptrace_getregs(.GETREGS, pid, &regs)
+	switch r {
+	case .r15:
+		return regs.r15
+	case .r14:
+		return regs.r14
+	case .r13:
+		return regs.r13
+	case .r12:
+		return regs.r12
+	case .rbp:
+		return regs.rbp
+	case .rbx:
+		return regs.rbx
+	case .r11:
+		return regs.r11
+	case .r10:
+		return regs.r10
+	case .r9:
+		return regs.r9
+	case .r8:
+		return regs.r8
+	case .rax:
+		return regs.rax
+	case .rcx:
+		return regs.rcx
+	case .rdx:
+		return regs.rdx
+	case .rsi:
+		return regs.rsi
+	case .rdi:
+		return regs.rdi
+	case .orig_rax:
+		return regs.orig_rax
+	case .rip:
+		return regs.rip
+	case .cs:
+		return regs.cs
+	case .eflags:
+		return regs.eflags
+	case .rsp:
+		return regs.rsp
+	case .ss:
+		return regs.ss
+	case .fs_base:
+		return regs.fs_base
+	case .gs_base:
+		return regs.gs_base
+	case .ds:
+		return regs.ds
+	case .es:
+		return regs.es
+	case .fs:
+		return regs.fs
+	case .gs:
+		return regs.gs
+	}
+	return 0
+}
+
+register_set_value :: proc(pid: sys.Pid, r: Register_Type, val: uint) {
+	regs: sys.User_Regs
+	ptrace_err := sys.ptrace_getregs(.GETREGS, pid, &regs)
+	switch r {
+	case .r15:
+		regs.r15 = val
+	case .r14:
+		regs.r14 = val
+	case .r13:
+		regs.r13 = val
+	case .r12:
+		regs.r12 = val
+	case .rbp:
+		regs.rbp = val
+	case .rbx:
+		regs.rbx = val
+	case .r11:
+		regs.r11 = val
+	case .r10:
+		regs.r10 = val
+	case .r9:
+		regs.r9 = val
+	case .r8:
+		regs.r8 = val
+	case .rax:
+		regs.rax = val
+	case .rcx:
+		regs.rcx = val
+	case .rdx:
+		regs.rdx = val
+	case .rsi:
+		regs.rsi = val
+	case .rdi:
+		regs.rdi = val
+	case .orig_rax:
+		regs.orig_rax = val
+	case .rip:
+		regs.rip = val
+	case .cs:
+		regs.cs = val
+	case .eflags:
+		regs.eflags = val
+	case .rsp:
+		regs.rsp = val
+	case .ss:
+		regs.ss = val
+	case .fs_base:
+		regs.fs_base = val
+	case .gs_base:
+		regs.gs_base = val
+	case .ds:
+		regs.ds = val
+	case .es:
+		regs.es = val
+	case .fs:
+		regs.fs = val
+	case .gs:
+		regs.gs = val
+	}
+
+	setreg_err := sys.ptrace_setregs(.SETREGS, pid, &regs)
+}
+
+register_get_value_from_dwarf :: proc(pid: sys.Pid, register_num: int) -> (val: uint, ok: bool) {
+	reg := DWARF_TO_REGISTER[register_num] or_return
+	return register_get_value(pid, reg), true
 }
