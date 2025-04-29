@@ -173,6 +173,32 @@ debugger_dump_registers :: proc(dbg: ^Debugger) {
 	)
 }
 
+debugger_get_pc :: #force_inline proc(dbg: ^Debugger) -> uint {
+	return register_get_value(dbg.pid, .rip)
+}
+
+debugger_set_pc :: #force_inline proc(dbg: ^Debugger, pc: uint) {
+	register_set_value(dbg.pid, .rip, pc)
+}
+
+debugger_step_over_breakpoint :: proc(dbg: ^Debugger) {
+	possible_breakpoint_location := debugger_get_pc(dbg) - 1
+	breakpoint, has_breakpoint := &dbg.breakpoints[cast(uintptr)possible_breakpoint_location]
+	if !has_breakpoint do return
+	if !breakpoint.enabled do return
+
+	debugger_set_pc(dbg, possible_breakpoint_location)
+	breakpoint_disable(breakpoint)
+	sys.ptrace_singlestep(.SINGLESTEP, dbg.pid, nil)
+	debugger_wait_for_signal(dbg)
+	breakpoint_enable(breakpoint)
+}
+
+debugger_wait_for_signal :: proc(dbg: ^Debugger) {
+	wait_status: u32
+	sys.waitpid(dbg.pid, &wait_status, nil, nil)
+}
+
 handle_command :: proc(dbg: ^Debugger, line: string) {
 	args := strings.split(line, " ")
 	if len(args) == 0 {
@@ -239,10 +265,9 @@ handle_command :: proc(dbg: ^Debugger, line: string) {
 }
 
 continue_execution :: proc(dbg: ^Debugger) {
+	debugger_step_over_breakpoint(dbg)
 	sys.ptrace_cont(.CONT, dbg.pid, nil)
-
-	wait_status: u32
-	sys.waitpid(dbg.pid, &wait_status, nil, nil)
+	debugger_wait_for_signal(dbg)
 }
 
 read_line :: proc(s: io.Stream) -> (string, io.Error) {
